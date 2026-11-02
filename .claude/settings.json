@@ -1,0 +1,84 @@
+{
+  "enableAllProjectMcpServers": false,
+  "enabledMcpjsonServers": ["github"],
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)",
+      "Edit(./.claude/settings.json)",
+      "Edit(./.claude/settings.local.json)",
+      "Edit(~/.claude/settings.json)",
+      "Edit(./.claude/hooks/**)",
+      "Edit(./.agent-policy/**)",
+      "Edit(./.agent-control/**)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(gh pr merge *)",
+      "Bash(gh pr review --approve *)",
+      "Bash(gh secret set *)",
+      "Bash(scripts/agent/approve-plan.sh *)",
+      "Bash(scripts/agent/close-task.sh *)",
+      "Bash(scripts/setup/apply-github-settings.sh *)"
+    ],
+    "ask": [
+      "Edit(./.github/workflows/**)",
+      "Edit(./.github/agents/**)",
+      "Edit(./.claude/agents/**)",
+      "Edit(./.github/hooks/**)",
+      "Edit(./.github/CODEOWNERS)",
+      "Edit(./infra/**)",
+      "Edit(./.mcp.json)",
+      "Bash(git push *)",
+      "Bash(gh pr create *)",
+      "Bash(rm -rf *)"
+    ],
+    "allow": [
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git branch *)",
+      "Bash(git switch -c *)",
+      "Bash(npm test *)",
+      "Bash(npm run lint *)",
+      "Bash(scripts/agent/eval-report.sh *)",
+      "Bash(scripts/agent/audit-report.sh *)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/session-context.sh", "args": [] }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/guard.sh", "args": [], "onFailure": "block" }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/audit-log.sh", "args": [], "async": true }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/on-failure.sh", "args": [] }
+        ]
+      }
+    ]
+  }
+}

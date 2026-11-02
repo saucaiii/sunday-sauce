@@ -1,0 +1,22 @@
+# Last matching line wins, so the catch-all goes FIRST.
+# Replace @saucaiii with real users or teams.
+# Blocks merges only when the ruleset has "Require review from Code Owners" (github/ruleset-main.json does).
+
+*                     @saucaiii
+
+# Guardrails and agent configuration: changing these changes what agents can do.
+/.github/workflows/   @saucaiii
+/.github/agents/      @saucaiii
+/.github/hooks/       @saucaiii
+/.github/CODEOWNERS   @saucaiii
+/.agent-policy/       @saucaiii
+/.claude/             @saucaiii
+/.mcp.json            @saucaiii
+/copilot/             @saucaiii
+/scripts/             @saucaiii
+/github/              @saucaiii
+/.agent-control/      @saucaiii
+
+# High-risk application areas
+/infra/               @saucaiii
+/src/auth/            @saucaiii

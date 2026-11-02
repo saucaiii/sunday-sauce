@@ -1,0 +1,15 @@
+# Agent runtime files (local evidence, not source)
+.agent/eval.md
+.agent-control/audit.log
+.agent-control/failures.json
+.agent-control/approval
+.agent-control/scope.txt
+.agent-control/archive/
+
+# Secrets: agents are blocked from reading these; keep humans from committing them too
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/

@@ -1,0 +1,122 @@
+# Invoke an agent from CI: Copilot CLI drafts a plan for an issue (GH-600 Domain 2).
+# Shows: CI invocation, least-privilege tools, bounded retries, escalation,
+# job outputs as handoffs, and durable evidence.
+#
+# Trigger: add the label "agent:plan" to an issue, or run manually.
+# Needs secret COPILOT_CLI_TOKEN (fine-grained PAT with "Copilot Requests").
+name: Agent Plan (CI)
+
+on:
+  issues:
+    types: [ labeled ]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: "Issue number to plan"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    # Defensive gating: only the right label, or a manual run.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issues' && github.event.label.name == 'agent:plan')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: read
+    outputs:
+      plan_file: ${{ steps.run.outputs.plan_file }}
+      attempts: ${{ steps.run.outputs.attempts }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - run: npm install -g @github/copilot@1.0.104   # pinned; bump deliberately
+      - name: Fetch issue (untrusted input, kept out of the script body)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+        run: gh issue view "$ISSUE" --json title,body --jq '"# " + .title + "\n\n" + .body' > issue.md
+      - name: Run planner with bounded retries
+        id: run
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_CLI_TOKEN }}
+        run: |
+          mkdir -p evidence
+          prompt="Read issue.md, CLAUDE.md and .github/agents/planner.agent.md. Write a plan with the fields from .github/pull_request_template.md to evidence/plan.md. Do not change any other file."
+          max=2
+          for attempt in $(seq 1 $max); do
+            echo "attempt=$attempt"
+            # Least privilege: read-only git, plus write (needed to save the plan). No other shell.
+            if copilot -p "$prompt" --allow-tool='shell(git:*)' --allow-tool=write --no-ask-user > "evidence/attempt-$attempt.log" 2>&1 \
+               && [ -s evidence/plan.md ]; then
+              echo "attempts=$attempt" >> "$GITHUB_OUTPUT"
+              echo "plan_file=evidence/plan.md" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Attempt $attempt failed."
+          done
+          echo "attempts=$max" >> "$GITHUB_OUTPUT"
+          exit 1
+      - name: Only the plan file changed
+        if: always()
+        run: |
+          changed="$(git status --porcelain | grep -v -E ' (evidence/|issue\.md$)' || true)"
+          if [ -n "$changed" ]; then echo "Agent changed files outside its allowed output:"; echo "$changed"; exit 1; fi
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: agent-plan-${{ github.sha }}-run${{ github.run_id }}
+          path: evidence/
+          retention-days: 30
+
+  publish:
+    needs: plan
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write   # elevated only in this job, only to comment
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: agent-plan-${{ github.sha }}-run${{ github.run_id }}
+          path: evidence
+      - name: Post plan on the issue for human review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          ATTEMPTS: ${{ needs.plan.outputs.attempts }}
+        run: |
+          {
+            echo "### Agent plan (needs human approval)"
+            echo "_Attempts: ${ATTEMPTS}. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}_"
+            echo; cat evidence/plan.md
+          } > comment.md
+          gh issue comment "$ISSUE" --body-file comment.md
+
+  escalate:
+    needs: plan
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Hand off to a human
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+        run: |
+          gh issue comment "$ISSUE" --body "### Agent escalation
+          The planning agent failed twice. Stopping retries.
+          - What failed: planning run (see logs)
+          - What was tried: 2 attempts with read-only tools
+          - Evidence: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} (artifact agent-plan-${{ github.sha }}-run${{ github.run_id }})
+          - Suggested next step: check the attempt logs, classify the root cause (reasoning, tool misuse, context/environment), adjust instructions or tools, rerun."

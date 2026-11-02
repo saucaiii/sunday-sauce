@@ -1,0 +1,39 @@
+# Detect conflicts between parallel agents (GH-600 Domain 5).
+# Fails if this agent PR changes a file that another open agent PR also changes.
+name: Agent Conflicts
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [ opened, synchronize, reopened ]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  overlap:
+    # Only agent branches. Human PRs are not checked.
+    # agent/ = this kit, copilot/ = Copilot cloud agent, claude/ = Claude Code desktop app sessions.
+    if: startsWith(github.head_ref, 'agent/') || startsWith(github.head_ref, 'copilot/') || startsWith(github.head_ref, 'claude/')
+    runs-on: ubuntu-latest
+    steps:
+      # Checker comes from the base branch so a PR cannot change it.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          sparse-checkout: scripts/agent
+      - name: Compare with other open agent PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr view "$PR" --json files --jq '.files[].path' > mine.txt
+          gh pr list --state open --limit 100 --json number,headRefName \
+            --jq "[.[] | select(.number != $PR) | select(.headRefName | startswith(\"agent/\") or startswith(\"copilot/\") or startswith(\"claude/\"))]" > open.json
+          jq -c '.[]' open.json | while read -r pr; do
+            n="$(jq -r .number <<<"$pr")"
+            files="$(gh pr view "$n" --json files --jq '[.files[].path]')"
+            jq -c --argjson f "$files" '. + {files: $f}' <<<"$pr"
+          done | jq -s '.' > others.json
+          scripts/agent/check-overlap.sh mine.txt others.json | tee -a "$GITHUB_STEP_SUMMARY"

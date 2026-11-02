@@ -1,0 +1,85 @@
+# Success criteria as required checks + durable evidence (GH-600 Domains 1, 4).
+# Required status checks: "test", "codeql".
+name: CI
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read   # least privilege by default; jobs elevate only what they need
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # Runs in every repo, app or not: the guardrails themselves are tested.
+      - name: Guardrail tests
+        run: |
+          mkdir -p results
+          bash tests/guardrails.sh 2>&1 | tee results/guardrails-output.txt
+          exit "${PIPESTATUS[0]}"
+      # App steps run only once the repo has a Node app (a lock file).
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: hashFiles('package-lock.json') != ''
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+        if: hashFiles('package-lock.json') != ''
+      - name: Test (results saved as evidence)
+        if: hashFiles('package-lock.json') != ''
+        run: |
+          npm test 2>&1 | tee results/test-output.txt
+          exit "${PIPESTATUS[0]}"
+      - run: npm run lint --if-present
+        if: hashFiles('package-lock.json') != ''
+      - name: Upload test evidence
+        if: always()   # keep evidence even when tests fail, for debugging
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          # Traceable: names the commit and run that produced it.
+          name: test-results-${{ github.sha }}-run${{ github.run_id }}
+          path: results/
+          retention-days: 30
+      - name: Evidence summary
+        if: always()
+        run: |
+          {
+            echo "### Evidence"
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "- Artifact: test-results-${{ github.sha }}-run${{ github.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read            # CodeQL reads the workflow run; required on private repos
+      security-events: write   # only what CodeQL needs to upload SARIF results
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # CodeQL fails on a repo with no JS/TS, so skip the scan (the job still passes) until there is code.
+      - name: Detect JavaScript/TypeScript
+        id: detect
+        run: |
+          if git ls-files '*.js' '*.jsx' '*.mjs' '*.cjs' '*.ts' '*.tsx' | grep -q .; then
+            echo "has_code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_code=false" >> "$GITHUB_OUTPUT"
+            echo "No JavaScript/TypeScript files; CodeQL scan skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: github/codeql-action/init@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3
+        if: steps.detect.outputs.has_code == 'true'
+        with:
+          languages: javascript-typescript
+      - uses: github/codeql-action/analyze@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3
+        if: steps.detect.outputs.has_code == 'true'

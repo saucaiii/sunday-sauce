@@ -1,0 +1,4 @@
+# Human-owned. new-task.sh writes .agent-control/scope.txt for you. One path prefix per line.
+# Agents cannot edit this folder; the policy blocks edits outside these prefixes.
+src/
+tests/

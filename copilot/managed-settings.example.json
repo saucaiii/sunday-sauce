@@ -1,0 +1,6 @@
+{
+  "allowedMcpServers": [
+    { "serverUrl": "https://api.githubcopilot.com/*" }
+  ],
+  "deniedMcpServers": []
+}

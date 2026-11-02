@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/readonly",
+      "tools": [
+        "get_file_contents",
+        "search_code",
+        "list_issues",
+        "get_issue",
+        "get_pull_request",
+        "get_pull_request_files",
+        "list_code_scanning_alerts"
+      ],
+      "headers": {
+        "Authorization": "Bearer $COPILOT_MCP_GITHUB_PERSONAL_ACCESS_TOKEN",
+        "X-MCP-Toolsets": "repos,issues,pull_requests,code_security"
+      }
+    }
+  }
+}

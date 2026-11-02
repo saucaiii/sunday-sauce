@@ -1,0 +1,38 @@
+version: 2
+
+updates:
+  # Keep the pinned Action SHAs in .github/workflows/ current.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      actions-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # Node projects: uncomment to let Dependabot track npm dependencies.
+  # - package-ecosystem: npm
+  #   directory: "/"
+  #   schedule:
+  #     interval: weekly
+  #   open-pull-requests-limit: 5
+  #   labels:
+  #     - dependencies
+  #     - npm
+  #   commit-message:
+  #     prefix: chore
+  #     include: scope
+  #   groups:
+  #     npm-minor-and-patch:
+  #       update-types:
+  #         - minor
+  #         - patch

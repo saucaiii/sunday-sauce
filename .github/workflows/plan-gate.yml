@@ -1,0 +1,95 @@
+# Plan gate + scope check (GH-600 Domains 1, 2, 4, 6).
+# Required status checks: "require-plan", "scope-check".
+name: Plan Gate
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [ opened, edited, synchronize, reopened, ready_for_review ]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  require-plan:
+    if: github.event_name == 'pull_request'   # defensive gating
+    runs-on: ubuntu-latest
+    steps:
+      - name: Plan fields are filled
+        env:
+          # Untrusted input goes through env, never ${{ }} inside run:, to prevent script injection.
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          missing=()
+          for field in "Risk" "Goal" "Scope" "Success criteria" "Rollback"; do
+            line="$(printf '%s\n' "$PR_BODY" | grep -iE "\*\*${field}[^*]*:\*\*" | head -1)"
+            value="$(printf '%s' "$line" | sed -E 's/.*:\*\*\s*//')"
+            if [ -z "$line" ]; then missing+=("$field (missing)")
+            elif [ "$field" = "Risk" ] && printf '%s' "$value" | grep -q '|'; then missing+=("Risk (pick one level)")
+            elif [ "$field" != "Success criteria" ] && [ -z "$value" ]; then missing+=("$field (empty)")
+            fi
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "Plan incomplete:"; printf ' - %s\n' "${missing[@]}"; exit 1
+          fi
+          echo "Plan present."
+
+  scope-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      # Run the checker from the base branch, not from the PR, so a PR cannot weaken the check that judges it.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .trusted
+          sparse-checkout: scripts/agent
+      - name: Changed files stay inside the declared scope
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: git diff --name-only "$BASE" "$HEAD" | bash .trusted/scripts/agent/scope-check.sh
+
+  flag-high-risk:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      high_risk: ${{ steps.scan.outputs.high_risk }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - id: scan
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          risky="$(git diff --name-only "$BASE" "$HEAD" | grep -E '^(\.github/(workflows|agents|hooks)/|\.github/CODEOWNERS|\.agent-policy/|\.agent-control/|\.claude/|\.mcp\.json|scripts/|github/|copilot/|infra/|deploy/|src/auth/)' || true)"
+          if [ -n "$risky" ]; then
+            echo "high_risk=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::High-risk paths changed. Plan-first approval and code owner review required."
+            printf '### High-risk paths changed\n```\n%s\n```\n' "$risky" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "high_risk=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  high-risk-plan-declared:
+    # Cross-job handoff: uses the job output from flag-high-risk.
+    needs: flag-high-risk
+    if: needs.flag-high-risk.outputs.high_risk == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Risk level must be high or critical
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if printf '%s\n' "$PR_BODY" | grep -iE '\*\*Risk:\*\*\s*(high|critical)' >/dev/null; then
+            echo "Risk correctly declared."
+          else
+            echo "This PR changes high-risk paths but the plan does not declare Risk: high or critical."; exit 1
+          fi
