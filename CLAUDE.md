@@ -27,6 +27,7 @@ Everyday repo hygiene, applied to humans and agents alike. The guardrails elsewh
   - Humans use `feature/`, `fix/`, `chore/`, `docs/` (one topic per branch).
   - Agents stay on `agent/<task>` (see step 5 above). Claude Code may also use `claude/*` and Copilot may also use `copilot/*`; those prefixes keep agent origin visible per the Transparency bullet in Responsible AI.
   - `main` is the integration branch. Nothing is committed directly to `main`.
+  - Show segments live on `segment/<name>` (institutional, penguin, ai, trenches). These are the one long-lived exception to "short-lived": each merges into `main` through a PR when the segment is ready for air, and stays open for the next episode.
 - **Short-lived.** One feature per branch. Open a PR as soon as there is something to review, merge when it is green, and delete the branch after merge.
 - **Conventional Commits for everyone.** Message format: `type: imperative summary`, where `type` is one of `feat`, `fix`, `refactor`, `chore`, `docs`, or `test`. The summary line is under 72 characters. No `wip`, `updates`, `stuff`, or similar. A breaking change adds `!` after the type (for example `feat!: rename public config key`) and explains it in the body.
 - **Tags are human-only.** Stable versions get an annotated tag through `scripts/release.sh <version>` (default branch, clean tree, up to date, `vX.Y.Z`). The script prints the push command rather than pushing. Agents must not run it; the policy and this file both block it.
