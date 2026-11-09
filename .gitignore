@@ -13,3 +13,10 @@
 *.pem
 *.key
 secrets/
+
+# Node and runtime state
+node_modules/
+dist/
+data/
+*.log
+.DS_Store
