@@ -6,7 +6,7 @@
   "scripts": {
     "overlay": "tsx src/server.ts",
     "overlay:demo": "OVERLAY_FIXTURES=1 tsx src/server.ts",
-    "test": "tsx --test test/*.test.ts"
+    "test": "tsx --test --test-concurrency=1 test/*.test.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.7"
