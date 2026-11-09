@@ -174,7 +174,7 @@ async function onMediaEnded(input: string): Promise<void> {
   returnTo = "";
   console.log(`[OBS] "${input}" ended, back to ${target}`);
   await request("SetCurrentProgramScene", { sceneName: target }).catch((e) =>
-    console.error(`[OBS] could not return to ${target}:`, (e as Error).message));
+    console.error("[OBS] could not return to %s:", target, (e as Error).message));
 }
 
 function onMessage(raw: string): void {
