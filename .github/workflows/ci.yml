@@ -27,7 +27,7 @@ jobs:
           bash tests/guardrails.sh 2>&1 | tee results/guardrails-output.txt
           exit "${PIPESTATUS[0]}"
       # App steps run only once the repo has a Node app (a lock file).
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: hashFiles('package-lock.json') != ''
         with:
           node-version: 20
